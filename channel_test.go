@@ -5,6 +5,7 @@
 package channel_subscription
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -85,4 +86,36 @@ func TestTrySend(t *testing.T) {
 func TestSend(t *testing.T) {
 	cs.Send(true)
 	countRecv(t)
+}
+
+func Example() {
+	const numChs = 10
+	cs := make(ChannelSubscription)
+	ret := make(chan bool, numChs)
+	channels := make([]chan bool, numChs)
+
+	for i := 0; i < numChs; i++ {
+		channels[i] = make(chan bool)
+		go func(ch chan bool) {
+			for {
+				ret <- <-ch
+			}
+		}(channels[i])
+		cs.Subscribe(channels[i])
+	}
+
+	cs.Send(true)
+
+	count := 0
+	for i := 0; i < numChs; i++ {
+		if <-ret {
+			count++
+		}
+	}
+	if count != numChs {
+		fmt.Println("Send failed.")
+	} else {
+		fmt.Println("Send ok!")
+	}
+	// Output: Send ok!
 }
