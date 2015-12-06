@@ -10,19 +10,19 @@ import (
 	"testing"
 )
 
-var cs ChannelSubscription
+var cs *ChannelSubscription
 var numChs = 10
-var channels []chan bool
-var ret chan bool
+var channels []chan struct{}
+var ret chan struct{}
 
 func TestMain(m *testing.M) {
-	cs = make(ChannelSubscription)
-	ret = make(chan bool, numChs)
-	channels = make([]chan bool, numChs)
+	cs = NewChannelSubscription()
+	ret = make(chan struct{}, numChs)
+	channels = make([]chan struct{}, numChs)
 
 	for i := 0; i < numChs; i++ {
-		channels[i] = make(chan bool)
-		go func(ch chan bool) {
+		channels[i] = make(chan struct{})
+		go func(ch chan struct{}) {
 			for {
 				ret <- <-ch
 			}
@@ -66,7 +66,7 @@ func TestUnsubscribe(t *testing.T) {
 func countRecv(t *testing.T) {
 	count := 0
 	for i := 0; i < numChs; i++ {
-		if <-ret {
+		if _, ok := <-ret; ok {
 			count++
 		}
 	}
@@ -76,7 +76,7 @@ func countRecv(t *testing.T) {
 }
 
 func TestTrySend(t *testing.T) {
-	ok := cs.TrySend(true)
+	ok := cs.TrySend(struct{}{})
 	if !ok {
 		t.Fatal("TrySend failed")
 	}
@@ -84,13 +84,13 @@ func TestTrySend(t *testing.T) {
 }
 
 func TestSend(t *testing.T) {
-	cs.Send(true)
+	cs.Send(struct{}{})
 	countRecv(t)
 }
 
 func Example() {
 	const numChs = 10
-	cs := make(ChannelSubscription)
+	cs := NewChannelSubscription()
 	ret := make(chan bool, numChs)
 	channels := make([]chan bool, numChs)
 

@@ -15,37 +15,52 @@ import (
 var ErrNotFound = errors.New("subscription not found")
 
 // ChannelSubscription map stores all channels to send.
-type ChannelSubscription map[reflect.Value]bool
+type ChannelSubscription struct {
+	channels map[reflect.Value]struct{}
+	lck      sync.Mutex
+}
+
+func NewChannelSubscription() *ChannelSubscription {
+	return &ChannelSubscription{
+		channels: make(map[reflect.Value]struct{}),
+	}
+}
 
 // Subscribe subscribes an remote channel that will send data to ch channel.
 // ch channel must be of one type only.
-func (c ChannelSubscription) Subscribe(ch interface{}) {
+func (c *ChannelSubscription) Subscribe(ch interface{}) {
+	c.lck.Lock()
+	defer c.lck.Unlock()
 	val := reflect.ValueOf(ch)
 	if val.Kind() != reflect.Chan {
 		panic("ch type isn't channel")
 	}
-	c[val] = true
+	c.channels[val] = struct{}{}
 }
 
 // Unsubscribe removes the channel ch from the pool, nothing will be
 // send to it.
-func (c ChannelSubscription) Unsubscribe(ch interface{}) error {
+func (c *ChannelSubscription) Unsubscribe(ch interface{}) error {
+	c.lck.Lock()
+	defer c.lck.Unlock()
 	val := reflect.ValueOf(ch)
-	_, found := c[val]
+	_, found := c.channels[val]
 	if !found {
 		return ErrNotFound
 	}
-	delete(c, val)
+	delete(c.channels, val)
 	return nil
 }
 
 // TrySend sends data to the channels subscribeds. i type must be
 // compatible with ch type. The semantics is the same of the
 // TrySend method in the reflect.Value type.
-func (c ChannelSubscription) TrySend(i interface{}) (sent bool) {
+func (c *ChannelSubscription) TrySend(i interface{}) (sent bool) {
+	c.lck.Lock()
+	defer c.lck.Unlock()
 	sent = true
 	val := reflect.ValueOf(i)
-	for ch := range c {
+	for ch := range c.channels {
 		sent = sent && ch.TrySend(val)
 	}
 	return
@@ -54,11 +69,13 @@ func (c ChannelSubscription) TrySend(i interface{}) (sent bool) {
 // Send sends data to the channels subscribeds. i type must be
 // compatible with ch type. The semantics is the same of the
 // Send method in the reflect.Value type.
-func (c ChannelSubscription) Send(i interface{}) {
+func (c *ChannelSubscription) Send(i interface{}) {
+	c.lck.Lock()
+	defer c.lck.Unlock()
 	val := reflect.ValueOf(i)
 	var wg sync.WaitGroup
-	wg.Add(len(c))
-	for ch := range c {
+	wg.Add(len(c.channels))
+	for ch := range c.channels {
 		go func(ch reflect.Value) {
 			defer wg.Done()
 			ch.Send(val)
